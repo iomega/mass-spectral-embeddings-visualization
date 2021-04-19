@@ -121,7 +121,54 @@ def get_json_npc_results(raw_json: bytes) -> List[str]:
     return wanted_info
 
 
-def get_classes(spectra: List[SpectrumType]) -> List[List[Union[str, int]]]:
+def get_cf_classes(smiles: str, inchi: str) -> Union[None, List[str]]:
+    """Get ClassyFire classes through GNPS API
+
+    :param smiles: Smiles for the query spectrum
+    :param inchi: Inchikey for the query spectrum
+    :return: ClassyFire classes if possible
+    """
+    result = None
+    # lookup CF with smiles
+    url_base = "https://gnps-structure.ucsd.edu/classyfire?smiles="
+    url_smiles = url_base + smiles
+    smiles_result = do_url_request(url_smiles)
+
+    # read CF result
+    if smiles_result is not None:
+        result = get_json_cf_results(smiles_result)
+
+    if not result:
+        # do a second try with inchikey
+        url_inchi = \
+            f"https://gnps-classyfire.ucsd.edu/entities/{inchi}.json"
+        inchi_result = do_url_request(url_inchi)
+
+        # read CF result from inchikey lookup
+        if inchi_result is not None:
+            result = get_json_cf_results(inchi_result)
+    return result
+
+
+def get_npc_classes(smiles: str) -> Union[None, List[str]]:
+    """Get NPClassifier classes through GNPS API
+
+    :param smiles: Smiles for the query spectrum
+    :return: NPClassifier classes if possible
+    """
+    result = None
+    # lookup NPClassifier with smiles
+    url_base_npc = "https://npclassifier.ucsd.edu/classify?smiles="
+    url_smiles_npc = url_base_npc + smiles
+    smiles_result_npc = do_url_request(url_smiles_npc)
+
+    # read NPC result
+    if smiles_result_npc is not None:
+        result = get_json_npc_results(smiles_result_npc)
+    return result
+
+
+def get_classes(spectra: List[SpectrumType]) -> List[List[str]]:
     """Get classes for the spectra via GNPS API
 
     :param spectra: list of spectra
@@ -131,48 +178,20 @@ def get_classes(spectra: List[SpectrumType]) -> List[List[Union[str, int]]]:
     missed_cfs = 0
     missed_npcs = 0
     for i, spec in enumerate(spectra):
-        result = None
-        npc_result = None
         smiles = spec.metadata.get("smiles")
         smiles = smiles.strip(' ')
+        safe_smiles = urllib.parse.quote(smiles)  # url encoding
         inchi = spec.metadata.get("inchikey")
         if not inchi:
             inchi = inchikey_from_smiles_rdkit(smiles)
 
-        # lookup CF with smiles
-        url_base = "https://gnps-structure.ucsd.edu/classyfire?smiles="
-        safe_smiles = urllib.parse.quote(smiles)  # url encoding
-        url_smiles = url_base + safe_smiles
-        smiles_result = do_url_request(url_smiles)
-
-        # read CF result
-        if smiles_result is not None:
-            result = get_json_cf_results(smiles_result)
-
-        if not result:
-            # do a second try with inchikey
-            url_inchi = \
-                f"https://gnps-classyfire.ucsd.edu/entities/{inchi}.json"
-            inchi_result = do_url_request(url_inchi)
-
-            # read CF result from inchikey lookup
-            if inchi_result is not None:
-                result = get_json_cf_results(inchi_result)
-
-        if not result:
+        cf_result = get_cf_classes(safe_smiles, inchi)
+        if not cf_result:
             missed_cfs += 1
             # num classes we want, if they are changed, change this number
-            result = ['' for _ in range(5)]
+            cf_result = ['' for _ in range(5)]
 
-        # lookup NPClassifier with smiles
-        url_base_npc = "https://npclassifier.ucsd.edu/classify?smiles="
-        url_smiles_npc = url_base_npc + safe_smiles
-        smiles_result_npc = do_url_request(url_smiles_npc)
-
-        # read NPC result
-        if smiles_result_npc is not None:
-            npc_result = get_json_npc_results(smiles_result_npc)
-
+        npc_result = get_npc_classes(safe_smiles)
         if not npc_result:
             # num classes we want, if they are changed, change this number
             npc_result = ['' for _ in range(4)]
@@ -182,9 +201,9 @@ def get_classes(spectra: List[SpectrumType]) -> List[List[Union[str, int]]]:
 
         # combine results
         spec_id = spec.metadata.get("spectrum_id")
-        combined_result = [i, spec_id, smiles, inchi] + result + npc_result
+        combined_result = [str(i), spec_id, smiles, inchi] + \
+            cf_result + npc_result
         classes.append(combined_result)
-        break
 
     print(f"Retrieved {len(classes) - missed_cfs} ClassyFire classes," +
           f" missing {missed_cfs}")
@@ -193,10 +212,32 @@ def get_classes(spectra: List[SpectrumType]) -> List[List[Union[str, int]]]:
     return classes
 
 
+def write_class_info(classes: List[List[str]], out_file: str):
+    """Write classes to out_file
+
+    :param classes: list of list of the required info per spectrum
+    :param out_file: location of output file
+    """
+    if not out_file.endswith('.txt'):
+        out_file += '.txt'
+    print("\nWriting output to:", out_file)
+
+    header_list = [
+        'spectrum_index', 'spectrum_id', 'smiles', 'inchi_key', 'cf_kingdom',
+        'cf_superclass', 'cf_class', 'cf_subclass', 'cf_direct_parent',
+        'npc_class_results', 'npc_superclass_results', 'npc_pathway_results',
+        'npc_isglycoside']
+    with open(out_file, 'w') as outf:
+        outf.write("{}\n".format('\t'.join(header_list)))
+        for classes_per_spec in classes:
+            assert len(classes_per_spec) == len(header_list)
+            outf.write("{}\n".format('\t'.join(classes_per_spec)))
+
+
 if __name__ == "__main__":
     tstart = time.time()
-    error_msg = "Incorrect input" +\
-        f"\nUsage:\n\tpython {argv[0]} <spectra.pickle> <output_file>"
+    error_msg = "Incorrect input" + \
+                f"\nUsage:\n\tpython {argv[0]} <spectra.pickle> <output_file>"
     if len(argv) != 3:
         raise ValueError(error_msg)
     if not argv[1].endswith('.pickle'):
@@ -205,10 +246,10 @@ if __name__ == "__main__":
 
     spectrums = read_pickled_spectra(argv[1])
     classes_result = get_classes(spectrums)
-    print(classes_result)
+    write_class_info(classes_result, argv[2])
 
     tend = time.time()
-    t = tend-tstart
+    t = tend - tstart
     t_str = '{}h{}m{}s'.format(int(t / 3600), int(t % 3600 / 60),
                                int(t % 3600 % 60))
     print('\nFinished in {}'.format(t_str))
