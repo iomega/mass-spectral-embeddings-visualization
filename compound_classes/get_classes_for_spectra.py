@@ -80,10 +80,16 @@ def inchikey_from_smiles_rdkit(smiles: str) -> str:
     :param smiles: Smiles to be turned into inchikey
     :return: inchikey as string
     """
-    m = Chem.MolFromSmiles(smiles)
-    smiles = Chem.MolToSmiles(m, kekuleSmiles=False, isomericSmiles=False)
-    m = Chem.MolFromSmiles(smiles)
-    inchikey = Chem.inchi.MolToInchiKey(m)
+    inchikey = ""
+    if smiles:
+        m = Chem.MolFromSmiles(smiles)
+        if m:
+            new_smiles = Chem.MolToSmiles(m, kekuleSmiles=False,
+                                          isomericSmiles=False)
+            if new_smiles:
+                new_m = Chem.MolFromSmiles(new_smiles)
+                if new_m:
+                    inchikey = Chem.inchi.MolToInchiKey(new_m)
     return inchikey
 
 
