@@ -179,8 +179,6 @@ def get_classes(spectra: List[SpectrumType]) -> List[List[str]]:
     missed_npcs = 0
     for i, spec in enumerate(spectra):
         smiles = spec.metadata.get("smiles")
-        smiles = smiles.strip(' ')
-        safe_smiles = urllib.parse.quote(smiles)  # url encoding
         inchi = spec.metadata.get("inchikey")
         if not inchi:
             if smiles:
@@ -188,6 +186,8 @@ def get_classes(spectra: List[SpectrumType]) -> List[List[str]]:
             else:
                 inchi = 'definitely-not-an-inchi'
 
+        smiles = smiles.strip(' ')
+        safe_smiles = urllib.parse.quote(smiles)  # url encoding
         cf_result = get_cf_classes(safe_smiles, inchi)
         if not cf_result:
             missed_cfs += 1
