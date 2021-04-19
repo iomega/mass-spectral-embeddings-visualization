@@ -183,7 +183,10 @@ def get_classes(spectra: List[SpectrumType]) -> List[List[str]]:
         safe_smiles = urllib.parse.quote(smiles)  # url encoding
         inchi = spec.metadata.get("inchikey")
         if not inchi:
-            inchi = inchikey_from_smiles_rdkit(smiles)
+            if smiles:
+                inchi = inchikey_from_smiles_rdkit(smiles)
+            else:
+                inchi = 'definitely-not-an-inchi'
 
         cf_result = get_cf_classes(safe_smiles, inchi)
         if not cf_result:
