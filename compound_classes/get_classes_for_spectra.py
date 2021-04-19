@@ -12,7 +12,7 @@ import pickle
 import urllib
 import time
 from sys import argv
-from typing import List
+from typing import List, Union
 from rdkit import Chem
 from matchms.typing import SpectrumType
 
@@ -24,6 +24,7 @@ def read_pickled_spectra(input_file: str) -> List[SpectrumType]:
     :return: list of spectra
     """
     if os.path.exists(input_file):
+        print("\nReading spectra")
         with open(input_file, 'rb') as inf:
             spectra = pickle.load(inf)
     else:
@@ -120,6 +121,78 @@ def get_json_npc_results(raw_json: bytes) -> List[str]:
     return wanted_info
 
 
+def get_classes(spectra: List[SpectrumType]) -> List[List[Union[str, int]]]:
+    """Get classes for the spectra via GNPS API
+
+    :param spectra: list of spectra
+    :return: list of list of the required info per spectrum
+    """
+    classes = []
+    missed_cfs = 0
+    missed_npcs = 0
+    for i, spec in enumerate(spectra):
+        result = None
+        npc_result = None
+        smiles = spec.metadata.get("smiles")
+        smiles = smiles.strip(' ')
+        inchi = spec.metadata.get("inchikey")
+        if not inchi:
+            inchi = inchikey_from_smiles_rdkit(smiles)
+
+        # lookup CF with smiles
+        url_base = "https://gnps-structure.ucsd.edu/classyfire?smiles="
+        safe_smiles = urllib.parse.quote(smiles)  # url encoding
+        url_smiles = url_base + safe_smiles
+        smiles_result = do_url_request(url_smiles)
+
+        # read CF result
+        if smiles_result is not None:
+            result = get_json_cf_results(smiles_result)
+
+        if not result:
+            # do a second try with inchikey
+            url_inchi = \
+                f"https://gnps-classyfire.ucsd.edu/entities/{inchi}.json"
+            inchi_result = do_url_request(url_inchi)
+
+            # read CF result from inchikey lookup
+            if inchi_result is not None:
+                result = get_json_cf_results(inchi_result)
+
+        if not result:
+            missed_cfs += 1
+            # num classes we want, if they are changed, change this number
+            result = ['' for _ in range(5)]
+
+        # lookup NPClassifier with smiles
+        url_base_npc = "https://npclassifier.ucsd.edu/classify?smiles="
+        url_smiles_npc = url_base_npc + safe_smiles
+        smiles_result_npc = do_url_request(url_smiles_npc)
+
+        # read NPC result
+        if smiles_result_npc is not None:
+            npc_result = get_json_npc_results(smiles_result_npc)
+
+        if not npc_result:
+            # num classes we want, if they are changed, change this number
+            npc_result = ['' for _ in range(4)]
+        # superclass, im assuming this one occurs the most if missing others
+        if not npc_result[1]:
+            missed_npcs += 1
+
+        # combine results
+        spec_id = spec.metadata.get("spectrum_id")
+        combined_result = [i, spec_id, smiles, inchi] + result + npc_result
+        classes.append(combined_result)
+        break
+
+    print(f"Retrieved {len(classes) - missed_cfs} ClassyFire classes," +
+          f" missing {missed_cfs}")
+    print(f"Retrieved {len(classes) - missed_npcs} NPClassifier " +
+          f"superclasses, missing {missed_npcs}")
+    return classes
+
+
 if __name__ == "__main__":
     tstart = time.time()
     error_msg = "Incorrect input" +\
@@ -131,6 +204,8 @@ if __name__ == "__main__":
     print("\nStart")
 
     spectrums = read_pickled_spectra(argv[1])
+    classes_result = get_classes(spectrums)
+    print(classes_result)
 
     tend = time.time()
     t = tend-tstart
