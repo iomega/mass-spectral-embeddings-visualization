@@ -42,7 +42,7 @@ def do_url_request(url: str) -> [bytes, None]:
     try:
         with urllib.request.urlopen(url) as inf:
             result = inf.read()
-    except urllib.error.HTTPError:
+    except (urllib.error.HTTPError, urllib.error.URLError):
         # apparently the request failed
         result = None
     return result
