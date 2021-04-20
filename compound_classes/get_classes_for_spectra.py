@@ -13,7 +13,6 @@ import urllib
 import time
 from sys import argv
 from typing import List, Union
-from rdkit import Chem
 from matchms.typing import SpectrumType
 
 
@@ -72,25 +71,6 @@ def get_json_cf_results(raw_json: bytes) -> List[str]:
         wanted_info.append(info)
 
     return wanted_info
-
-
-def inchikey_from_smiles_rdkit(smiles: str) -> str:
-    """Use rdkit to go from smiles to inchikey
-
-    :param smiles: Smiles to be turned into inchikey
-    :return: inchikey as string
-    """
-    inchikey = ""
-    if smiles:
-        m = Chem.MolFromSmiles(smiles)
-        if m:
-            new_smiles = Chem.MolToSmiles(m, kekuleSmiles=False,
-                                          isomericSmiles=False)
-            if new_smiles:
-                new_m = Chem.MolFromSmiles(new_smiles)
-                if new_m:
-                    inchikey = Chem.inchi.MolToInchiKey(new_m)
-    return inchikey
 
 
 def get_json_npc_results(raw_json: bytes) -> List[str]:
@@ -200,13 +180,9 @@ def get_classes(spectra: List[SpectrumType]) -> List[List[str]]:
             smiles = ""  # smiles can be None in metadata
             print(f"\t#{i} {spec_id} no smiles")
         inchi = spec.metadata.get("inchikey")
-        # try to retrieve inchikey from smiles through rdkit
         if not inchi:
-            inchi = inchikey_from_smiles_rdkit(smiles)
-            if inchi:
-                print(f"\t#{i} {spec_id} retrieved inchikey with smiles")
-            else:
-                print(f"\t#{i} {spec_id} no inchikey")
+            inchi = ""  # inchikeys can be None in metadata
+            print(f"\t#{i} {spec_id} no inchikey")
 
         smiles = smiles.strip(' ')
         safe_smiles = urllib.parse.quote(smiles)  # url encoding
