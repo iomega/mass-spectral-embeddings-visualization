@@ -28,6 +28,7 @@ def read_pickled_spectra(input_file: str) -> List[SpectrumType]:
             spectra = pickle.load(inf)
     else:
         raise FileNotFoundError(f"{input_file} does not exist")
+    print(f"\tread {len(spectra)} spectra")
     return spectra
 
 
