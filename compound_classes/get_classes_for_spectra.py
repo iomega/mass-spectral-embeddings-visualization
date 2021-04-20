@@ -136,23 +136,25 @@ def get_cf_classes(smiles: str, inchi: str) -> Union[None, List[str]]:
     """
     result = None
     # lookup CF with smiles
-    url_base = "https://gnps-structure.ucsd.edu/classyfire?smiles="
-    url_smiles = url_base + smiles
-    smiles_result = do_url_request(url_smiles)
+    if smiles:
+        url_base = "https://gnps-structure.ucsd.edu/classyfire?smiles="
+        url_smiles = url_base + smiles
+        smiles_result = do_url_request(url_smiles)
 
-    # read CF result
-    if smiles_result is not None:
-        result = get_json_cf_results(smiles_result)
+        # read CF result
+        if smiles_result is not None:
+            result = get_json_cf_results(smiles_result)
 
     if not result:
         # do a second try with inchikey
-        url_inchi = \
-            f"https://gnps-classyfire.ucsd.edu/entities/{inchi}.json"
-        inchi_result = do_url_request(url_inchi)
+        if inchi:
+            url_inchi = \
+                f"https://gnps-classyfire.ucsd.edu/entities/{inchi}.json"
+            inchi_result = do_url_request(url_inchi)
 
-        # read CF result from inchikey lookup
-        if inchi_result is not None:
-            result = get_json_cf_results(inchi_result)
+            # read CF result from inchikey lookup
+            if inchi_result is not None:
+                result = get_json_cf_results(inchi_result)
     return result
 
 
@@ -164,13 +166,14 @@ def get_npc_classes(smiles: str) -> Union[None, List[str]]:
     """
     result = None
     # lookup NPClassifier with smiles
-    url_base_npc = "https://npclassifier.ucsd.edu/classify?smiles="
-    url_smiles_npc = url_base_npc + smiles
-    smiles_result_npc = do_url_request(url_smiles_npc)
+    if smiles:
+        url_base_npc = "https://npclassifier.ucsd.edu/classify?smiles="
+        url_smiles_npc = url_base_npc + smiles
+        smiles_result_npc = do_url_request(url_smiles_npc)
 
-    # read NPC result
-    if smiles_result_npc is not None:
-        result = get_json_npc_results(smiles_result_npc)
+        # read NPC result
+        if smiles_result_npc is not None:
+            result = get_json_npc_results(smiles_result_npc)
     return result
 
 
@@ -180,17 +183,28 @@ def get_classes(spectra: List[SpectrumType]) -> List[List[str]]:
     :param spectra: list of spectra
     :return: list of list of the required info per spectrum
     """
+    print("\nRetrieving classes from GNPS API")
     classes = []
     missed_cfs = 0
     missed_npcs = 0
     for i, spec in enumerate(spectra):
+        if i % 5000 == 0:
+            print(f"{i} spectra done")
+
+        # get info for spectrum
+        spec_id = spec.metadata.get("spectrum_id")
         smiles = spec.metadata.get("smiles")
+        if not smiles:
+            smiles = ""  # smiles can be None in metadata
+            print(f"\t{spec_id} no smiles")
         inchi = spec.metadata.get("inchikey")
+        # try to retrieve inchikey from smiles through rdkit
         if not inchi:
-            if smiles:
-                inchi = inchikey_from_smiles_rdkit(smiles)
+            inchi = inchikey_from_smiles_rdkit(smiles)
+            if inchi:
+                print(f"\t{spec_id} retrieved inchikey with smiles")
             else:
-                inchi = 'definitely-not-an-inchi'
+                print(f"\t{spec_id} no inchikey")
 
         smiles = smiles.strip(' ')
         safe_smiles = urllib.parse.quote(smiles)  # url encoding
@@ -209,7 +223,6 @@ def get_classes(spectra: List[SpectrumType]) -> List[List[str]]:
             missed_npcs += 1
 
         # combine results
-        spec_id = spec.metadata.get("spectrum_id")
         combined_result = [str(i), spec_id, smiles, inchi] + \
             cf_result + npc_result
         classes.append(combined_result)
