@@ -239,7 +239,7 @@ if __name__ == "__main__":
     tstart = time.time()
     error_msg = "Incorrect input" + \
                 f"\nUsage:\n\tpython {argv[0]} <spectra.pickle> <output_file>"
-    if len(argv) != 3:
+    if len(argv) < 3:
         raise ValueError(error_msg)
     if not argv[1].endswith('.pickle'):
         raise ValueError(error_msg)
