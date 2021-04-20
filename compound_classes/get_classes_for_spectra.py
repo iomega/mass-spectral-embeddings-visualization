@@ -12,7 +12,7 @@ import pickle
 import urllib
 import time
 from sys import argv
-from typing import List, Union
+from typing import List, Union, Dict
 from matchms.typing import SpectrumType
 
 
@@ -158,65 +158,76 @@ def get_npc_classes(smiles: str) -> Union[None, List[str]]:
     return result
 
 
-def get_classes(spectra: List[SpectrumType]) -> List[List[str]]:
-    """Get classes for the spectra via GNPS API
+def get_classes(
+        spectra: List[SpectrumType]) -> Dict[str, List[Union[str, List[str]]]]:
+    """Get classes for the unique compounds (inchikeys) in spectra via GNPS API
 
     :param spectra: list of spectra
-    :return: list of list of the required info per spectrum
+    :return: dict {inchikey: [smiles, cf_classes, npc_classes, [spectrum_ids]]}
     """
     print("\nRetrieving classes from GNPS API")
-    classes = []
     missed_cfs = 0
     missed_npcs = 0
+    missed_spectra = 0
+    # {inchikey: [smiles, cf_classes, npc_classes, [spectrum_ids]]}
+    inchikey_dict = {}
     for i, spec in enumerate(spectra):
         if i % 5000 == 0 and not i == 0:
-            print(f"{i} spectra done")
+            print(
+                f"{i} spectra done, {len(inchikey_dict)} inchikeys collected")
 
         # get info for spectrum
         spec_id = spec.metadata.get("spectrum_id")
         if not spec_id:  # as a check if it will have id under different name
             spec_id = spec.metadata.get("spectrumid")
+        inchi = spec.metadata.get("inchikey")
+        if not inchi:
+            print(f"\t#{i} {spec_id} no inchikey")
+            missed_spectra += 1
+            continue
         smiles = spec.metadata.get("smiles")
         if not smiles:
             smiles = ""  # smiles can be None in metadata
-            print(f"\t#{i} {spec_id} no smiles")
-        inchi = spec.metadata.get("inchikey")
-        if not inchi:
-            inchi = ""  # inchikeys can be None in metadata
-            print(f"\t#{i} {spec_id} no inchikey")
 
-        smiles = smiles.strip(' ')
-        safe_smiles = urllib.parse.quote(smiles)  # url encoding
-        cf_result = get_cf_classes(safe_smiles, inchi)
-        if not cf_result:
-            missed_cfs += 1
-            # num classes we want, if they are changed, change this number
-            cf_result = ['' for _ in range(5)]
+        if inchi in inchikey_dict:
+            # inchikey already occurred, add spec_id to this inchikey
+            inchikey_dict[inchi][-1].append(spec_id)
+        else:
+            smiles = smiles.strip(' ')
+            safe_smiles = urllib.parse.quote(smiles)  # url encoding
+            cf_result = get_cf_classes(safe_smiles, inchi)
+            if not cf_result:
+                missed_cfs += 1
+                # num classes we want, if they are changed, change this number
+                cf_result = ['' for _ in range(5)]
 
-        npc_result = get_npc_classes(safe_smiles)
-        if not npc_result:
-            # num classes we want, if they are changed, change this number
-            npc_result = ['' for _ in range(4)]
-        # superclass, im assuming this one occurs the most if missing others
-        if not npc_result[1]:
-            missed_npcs += 1
+            npc_result = get_npc_classes(safe_smiles)
+            if not npc_result:
+                # num classes we want, if they are changed, change this number
+                npc_result = ['' for _ in range(4)]
+            # pathway, im assuming this one occurs the most if missing others
+            if not npc_result[2]:
+                missed_npcs += 1
 
-        # combine results
-        combined_result = [str(i), spec_id, smiles, inchi] + \
-            cf_result + npc_result
-        classes.append(combined_result)
+            # combine results
+            combined_result = [smiles] + cf_result + npc_result + [[spec_id]]
+            inchikey_dict[inchi] = combined_result
 
-    print(f"Retrieved {len(classes) - missed_cfs} ClassyFire classes," +
-          f" missing {missed_cfs}")
-    print(f"Retrieved {len(classes) - missed_npcs} NPClassifier " +
-          f"superclasses, missing {missed_npcs}")
-    return classes
+    print("Retrieved ClassyFire classes for " +
+          f"{len(inchikey_dict)-missed_cfs} inchikeys, missing {missed_cfs}")
+    print("Retrieved NPClassifier classes for " +
+          f"{len(inchikey_dict)-missed_npcs} inchikeys, missing {missed_npcs}")
+    print(f"Could not retrieve class data for {missed_spectra} spectra " +
+          "because of missing inchikeys")
+    return inchikey_dict
 
 
-def write_class_info(classes: List[List[str]], out_file: str):
+def write_class_info(
+        classes: Dict[str, List[Union[str, List[str]]]], out_file: str):
     """Write classes to out_file
 
-    :param classes: list of list of the required info per spectrum
+    :param classes: dict of
+        {inchikey: [smiles, cf_classes, npc_classes, [spectrum_ids]]}
     :param out_file: location of output file
     """
     if not out_file.endswith('.txt'):
@@ -224,15 +235,17 @@ def write_class_info(classes: List[List[str]], out_file: str):
     print("\nWriting output to:", out_file)
 
     header_list = [
-        'spectrum_index', 'spectrum_id', 'smiles', 'inchi_key', 'cf_kingdom',
+        'inchi_key', 'smiles', 'cf_kingdom',
         'cf_superclass', 'cf_class', 'cf_subclass', 'cf_direct_parent',
         'npc_class_results', 'npc_superclass_results', 'npc_pathway_results',
-        'npc_isglycoside']
+        'npc_isglycoside', 'spectrum_ids']
     with open(out_file, 'w') as outf:
         outf.write("{}\n".format('\t'.join(header_list)))
-        for classes_per_spec in classes:
-            assert len(classes_per_spec) == len(header_list)
-            outf.write("{}\n".format('\t'.join(classes_per_spec)))
+        for inchi, class_info in classes.items():
+            spec_ids = class_info.pop(-1)
+            write_str = [inchi] + class_info + [','.join(spec_ids)]
+            assert len(write_str) == len(header_list)
+            outf.write("{}\n".format('\t'.join(write_str)))
 
 
 if __name__ == "__main__":
