@@ -1,9 +1,13 @@
 #!/usr/bin/env python
 """
-Script to find ClassyFire and NPClassifier classes for matchms.SpectrumType via
+Author: Joris Louwen
+
+Script to find ClassyFire and NPClassifier classes for all unique compounds
+(inchikeys) in a list of ms/ms spectra (pickle of [matchms.SpectrumType]) via
 GNPS API.
+
 Makes a file with:
-index spectrum_id smiles inchikey cf_classes npc_classes
+inchikey smiles cf_classes npc_classes spectrum_ids
 """
 
 import os
