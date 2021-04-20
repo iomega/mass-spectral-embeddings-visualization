@@ -188,23 +188,25 @@ def get_classes(spectra: List[SpectrumType]) -> List[List[str]]:
     missed_cfs = 0
     missed_npcs = 0
     for i, spec in enumerate(spectra):
-        if i % 5000 == 0:
+        if i % 5000 == 0 and not i == 0:
             print(f"{i} spectra done")
 
         # get info for spectrum
         spec_id = spec.metadata.get("spectrum_id")
+        if not spec_id:  # as a check if it will have id under different name
+            spec_id = spec.metadata.get("spectrumid")
         smiles = spec.metadata.get("smiles")
         if not smiles:
             smiles = ""  # smiles can be None in metadata
-            print(f"\t{spec_id} no smiles")
+            print(f"\t#{i} {spec_id} no smiles")
         inchi = spec.metadata.get("inchikey")
         # try to retrieve inchikey from smiles through rdkit
         if not inchi:
             inchi = inchikey_from_smiles_rdkit(smiles)
             if inchi:
-                print(f"\t{spec_id} retrieved inchikey with smiles")
+                print(f"\t#{i} {spec_id} retrieved inchikey with smiles")
             else:
-                print(f"\t{spec_id} no inchikey")
+                print(f"\t#{i} {spec_id} no inchikey")
 
         smiles = smiles.strip(' ')
         safe_smiles = urllib.parse.quote(smiles)  # url encoding
