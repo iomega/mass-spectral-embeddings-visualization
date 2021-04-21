@@ -43,6 +43,7 @@ def do_url_request(url: str) -> [bytes, None]:
     :param url: url to access
     :return: open file or None if request failed
     """
+    time.sleep(1)  # to not overload the api
     try:
         with urllib.request.urlopen(url) as inf:
             result = inf.read()
