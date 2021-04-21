@@ -163,23 +163,24 @@ def get_npc_classes(smiles: str) -> Union[None, List[str]]:
     return result
 
 
-def get_classes(
-        spectra: List[SpectrumType]) -> Dict[str, List[Union[str, List[str]]]]:
-    """Get classes for the unique compounds (inchikeys) in spectra via GNPS API
+def get_classes(spectra: List[SpectrumType], out_file: str):
+    """
+    Write classes for the unique compounds (inchikeys) in spectra via GNPS API
 
     :param spectra: list of spectra
+    :param out_file: location of output file
     :return: dict {inchikey: [smiles, cf_classes, npc_classes, [spectrum_ids]]}
     """
     print("\nRetrieving classes from GNPS API")
+    out_txt = write_header(out_file)  # init out file with header
     missed_cfs = 0
     missed_npcs = 0
     missed_spectra = 0
-    # {inchikey: [smiles, cf_classes, npc_classes, [spectrum_ids]]}
-    inchikey_dict = {}
+    inchikey_set = set()
     for i, spec in enumerate(spectra):
         if i % 5000 == 0 and not i == 0:
             print(
-                f"{i} spectra done, {len(inchikey_dict)} inchikeys collected")
+                f"{i} spectra done, {len(inchikey_set)} inchikeys collected")
 
         # get info for spectrum
         spec_id = spec.metadata.get("spectrum_id")
@@ -194,10 +195,7 @@ def get_classes(
         if not smiles:
             smiles = ""  # smiles can be None in metadata
 
-        if inchi in inchikey_dict:
-            # inchikey already occurred, add spec_id to this inchikey
-            inchikey_dict[inchi][-1].append(spec_id)
-        else:
+        if inchi not in inchikey_set:  # inchikey didn't occur yet
             smiles = smiles.strip(' ')
             safe_smiles = urllib.parse.quote(smiles)  # url encoding
             cf_result = get_cf_classes(safe_smiles, inchi)
@@ -215,42 +213,50 @@ def get_classes(
                 missed_npcs += 1
 
             # combine results
-            combined_result = [smiles] + cf_result + npc_result + [[spec_id]]
-            inchikey_dict[inchi] = combined_result
+            combined_result = [smiles] + cf_result + npc_result
+            write_class_info(inchi, combined_result, out_txt)
+            inchikey_set.add(inchi)
 
     print("Retrieved ClassyFire classes for " +
-          f"{len(inchikey_dict)-missed_cfs} inchikeys, missing {missed_cfs}")
+          f"{len(inchikey_set)-missed_cfs} inchikeys, missing {missed_cfs}")
     print("Retrieved NPClassifier classes for " +
-          f"{len(inchikey_dict)-missed_npcs} inchikeys, missing {missed_npcs}")
+          f"{len(inchikey_set)-missed_npcs} inchikeys, missing {missed_npcs}")
     print(f"Could not retrieve class data for {missed_spectra} spectra " +
           "because of missing inchikeys")
-    return inchikey_dict
+    print(f"\nWrote output to {out_txt}")
+    return inchikey_set
 
 
-def write_class_info(
-        classes: Dict[str, List[Union[str, List[str]]]], out_file: str):
-    """Write classes to out_file
+def write_header(out_file: str) -> str:
+    """Write classes to out_file, returns out_file with possible .txt added
 
-    :param classes: dict of
-        {inchikey: [smiles, cf_classes, npc_classes, [spectrum_ids]]}
     :param out_file: location of output file
     """
     if not out_file.endswith('.txt'):
         out_file += '.txt'
-    print("\nWriting output to:", out_file)
 
     header_list = [
         'inchi_key', 'smiles', 'cf_kingdom',
         'cf_superclass', 'cf_class', 'cf_subclass', 'cf_direct_parent',
         'npc_class_results', 'npc_superclass_results', 'npc_pathway_results',
-        'npc_isglycoside', 'spectrum_ids']
+        'npc_isglycoside']
     with open(out_file, 'w') as outf:
         outf.write("{}\n".format('\t'.join(header_list)))
-        for inchi, class_info in classes.items():
-            spec_ids = class_info.pop(-1)
-            write_str = [inchi] + class_info + [','.join(spec_ids)]
-            assert len(write_str) == len(header_list)
-            outf.write("{}\n".format('\t'.join(write_str)))
+    return out_file
+
+
+def write_class_info(inchikey: str,
+                     class_info: List[str],
+                     out_file: str):
+    """Write classes to out_file
+
+    :param inchikey: inchikey
+    :param class_info: list [smiles, cf_classes, npc_classes]
+    :param out_file: location of output file
+    """
+    with open(out_file, 'a') as outf:
+        write_str = [inchikey] + class_info
+        outf.write("{}\n".format('\t'.join(write_str)))
 
 
 if __name__ == "__main__":
@@ -264,8 +270,7 @@ if __name__ == "__main__":
     print("\nStart")
 
     spectrums = read_pickled_spectra(argv[1])
-    classes_result = get_classes(spectrums)
-    write_class_info(classes_result, argv[2])
+    passed_inchikeys = get_classes(spectrums, argv[2])
 
     tend = time.time()
     t = tend - tstart
