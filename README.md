@@ -3,20 +3,27 @@ This is a repository containing the code behind the "Visualization and explorati
 
 List of dependencies to be able to run the code:
 
--python 3.8.5
--numpy (1.20+!)
-    -> pip install numpy==1.20
--seaborn
+python 3.8.5 required
+
+numpy (1.20+!)
+ -> pip install numpy==1.20
+
+seaborn
     -> pip install seaborn
--sklearn
+
+sklearn
     -> pip install sklearn
--pynndescent
+
+pynndescent
     -> pip install pynndescent
--spec2vec
+
+spec2vec
     -> conda install --channel nlesc --channel bioconda --channel conda-forge spec2vec
--matchms
+
+matchms
     -> conda install --channel bioconda --channel conda-forge matchms
--levenshtein
+
+levenshtein
     -> pip install levenshtein
 
 
